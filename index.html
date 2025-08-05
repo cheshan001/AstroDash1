@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Triangle Glow Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: sans-serif;
+      z-index: 1;
+    }
+    #restartBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 24px;
+      padding: 10px 20px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 8px;
+      display: none;
+      cursor: pointer;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">Score: <span id="score">0</span> | <span id="pauseText">Pause: Off</span></div>
+  <button id="restartBtn">Restart</button>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let keys = {};
+    let pause = false;
+    let score = 0;
+    let gameOver = false;
+
+    const scoreDisplay = document.getElementById("score");
+    const pauseText = document.getElementById("pauseText");
+    const restartBtn = document.getElementById("restartBtn");
+
+    const moveSound = new Audio("https://freesound.org/data/previews/320/320181_5260877-lq.mp3");
+    const crashSound = new Audio("https://freesound.org/data/previews/178/178186_285997-lq.mp3");
+
+    function randomColor() {
+      const colors = ['red', 'lime', 'cyan', 'yellow', 'magenta', 'orange'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    class Player {
+      constructor() {
+        this.size = 30;
+        this.x = canvas.width / 2;
+        this.y = canvas.height / 2;
+        this.speed = 7; // 3.5x base (2 * 3.5 = 7)
+        this.color = randomColor();
+      }
+
+      draw() {
+        ctx.save();
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y - this.size);
+        ctx.lineTo(this.x - this.size, this.y + this.size);
+        ctx.lineTo(this.x + this.size, this.y + this.size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      move() {
+        if (keys["ArrowLeft"]) this.x -= this.speed;
+        if (keys["ArrowRight"]) this.x += this.speed;
+        if (keys["ArrowUp"]) this.y -= this.speed;
+        if (keys["ArrowDown"]) this.y += this.speed;
+        this.x = Math.max(0, Math.min(canvas.width, this.x));
+        this.y = Math.max(0, Math.min(canvas.height, this.y));
+      }
+    }
+
+    class Asteroid {
+      constructor() {
+        this.size = 40;
+        this.x = Math.random() * canvas.width;
+        this.y = -this.size;
+        this.speed = 6; // 2x base
+        this.color = 'gray';
+      }
+
+      draw() {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      update() {
+        this.y += this.speed;
+      }
+    }
+
+    let player;
+    let asteroids;
+
+    function resetGame() {
+      player = new Player();
+      asteroids = [];
+      score = 0;
+      gameOver = false;
+      pause = false;
+      scoreDisplay.textContent = score;
+      pauseText.textContent = "Pause: Off";
+      restartBtn.style.display = "none";
+      animate();
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = "white";
+      ctx.font = "50px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 60);
+      ctx.font = "30px sans-serif";
+      ctx.fillText("Final Score: " + score, canvas.width / 2, canvas.height / 2 - 10);
+    }
+
+    function animate() {
+      if (gameOver || pause) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      player.draw();
+      player.move();
+
+      if (Math.random() < 0.03) {
+        asteroids.push(new Asteroid());
+      }
+
+      for (let i = 0; i < asteroids.length; i++) {
+        const a = asteroids[i];
+        a.update();
+        a.draw();
+
+        const dx = a.x - player.x;
+        const dy = a.y - player.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < (a.size / 2 + player.size / 2)) {
+          crashSound.play();
+          gameOver = true;
+          drawGameOver();
+          restartBtn.style.display = "block";
+          return;
+        }
+
+        if (a.y > canvas.height) {
+          asteroids.splice(i, 1);
+          i--;
+          score++;
+          scoreDisplay.textContent = score;
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener("keydown", e => {
+      keys[e.key] = true;
+      if (!pause && !gameOver && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        moveSound.currentTime = 0;
+        moveSound.play();
+      }
+      if (e.key === "p") {
+        pause = !pause;
+        pauseText.textContent = "Pause: " + (pause ? "On" : "Off");
+        if (!pause && !gameOver) animate();
+      }
+    });
+
+    window.addEventListener("keyup", e => {
+      keys[e.key] = false;
+    });
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    restartBtn.addEventListener("click", resetGame);
+
+    resetGame();
+  </script>
+</body>
+</html>
